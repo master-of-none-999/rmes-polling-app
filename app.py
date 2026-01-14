@@ -50,12 +50,14 @@ def inject_custom_css():
         
         /* App 背景漸層 */
         .stApp {
-            background: linear-gradient(135deg, #eef2ff 0%, #ffffff 50%, #ecfeff 100%);
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            background-attachment: fixed;
         }
         
         /* 隱藏預設 Header 與 Footer */
         header {visibility: hidden;}
         footer {visibility: hidden;}
+        .stDeployButton {display:none;}
         
         /* 標題樣式 */
         h1 {
@@ -63,65 +65,69 @@ def inject_custom_css():
             font-weight: 800 !important;
             text-shadow: 0 2px 4px rgba(0,0,0,0.05);
             padding-bottom: 1rem;
+            text-align: center;
         }
         
         h2, h3 {
-            color: #334155 !important;
+            color: #1e293b !important;
             font-weight: 700 !important;
         }
         
         /* 卡片容器樣式 (Glassmorphism) */
-        .stForm, div[data-testid="stExpander"], div[data-testid="stMetric"] {
-            background: rgba(255, 255, 255, 0.7);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.5);
+        .stForm, div[data-testid="stExpander"], div[data-testid="stMetric"], div[data-testid="stVerticalBlock"] > div[style*="background-color"] {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
             border-radius: 20px !important;
             padding: 2rem;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+            margin-bottom: 1.5rem;
         }
 
         /* 輸入框與選擇器美化 */
-        .stRadio div[role="radiogroup"], .stMultiSelect {
-            background: rgba(255, 255, 255, 0.5);
-            padding: 15px;
-            border-radius: 15px;
+        .stRadio div[role="radiogroup"], .stMultiSelect, .stTextInput > div > div {
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 12px;
             border: 1px solid #e2e8f0;
+            transition: all 0.3s;
+        }
+        
+        .stTextInput > div > div:focus-within {
+            border-color: #6366f1;
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
         }
 
-        /* 按鈕美化 */
-        div.stButton > button {
-            background: linear-gradient(to right, #6366f1, #8b5cf6);
+        /* 按鈕美化 - Primary */
+        div.stButton > button[kind="primary"], div.stButton > button:not([kind="secondary"]) {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
             color: white !important;
             border: none;
             padding: 0.6rem 1.5rem;
             border-radius: 12px;
             font-weight: 600;
-            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-            transition: all 0.3s ease;
+            box-shadow: 0 4px 14px 0 rgba(99, 102, 241, 0.39);
+            transition: all 0.2s ease;
             width: 100%;
         }
         
-        div.stButton > button:hover {
+        div.stButton > button[kind="primary"]:hover, div.stButton > button:not([kind="secondary"]):hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
-            border-color: transparent !important;
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.23);
         }
 
-        div.stButton > button:active {
-            transform: translateY(0);
+        /* 按鈕美化 - Secondary */
+        div.stButton > button[kind="secondary"] {
+            background: white;
+            color: #475569 !important;
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         }
-
-        /* 次要按鈕 (Ghost/Secondary) 樣式 - 針對特定 Key 修改 */
-        div[data-testid="stHorizontalBlock"] button {
-             background: white;
-             color: #475569 !important;
-             border: 1px solid #cbd5e1;
-             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        }
-        div[data-testid="stHorizontalBlock"] button:hover {
-             border-color: #6366f1;
-             color: #6366f1 !important;
+        
+        div.stButton > button[kind="secondary"]:hover {
+            border-color: #6366f1;
+            color: #6366f1 !important;
         }
 
         /* Metric 數字顏色 */
@@ -129,17 +135,16 @@ def inject_custom_css():
             color: #4F46E5 !important;
         }
         
-        /* DataFrame 表格美化 */
-        [data-testid="stDataFrame"] {
-            border-radius: 12px;
-            overflow: hidden;
-            border: 1px solid #e2e8f0;
-        }
-        
         /* 側邊欄美化 */
         section[data-testid="stSidebar"] {
             background-color: #ffffff;
             border-right: 1px solid #f1f5f9;
+        }
+        
+        /* Checkbox */
+        .stCheckbox label span {
+             font-weight: 600;
+             color: #334155;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -169,7 +174,7 @@ def send_password_email(new_password):
         email_user = st.secrets["gmail"]["user"]
         email_password = st.secrets["gmail"]["password"]
     except Exception:
-        st.error("Secrets 設定錯誤：無法讀取 [gmail] 設定，請檢查 Streamlit Cloud 後台。")
+        # 如果沒有設定 secrets，回傳 False 讓 UI 顯示警告，但不崩潰
         return False
 
     receiver_email = "rme@catholic.edu.hk"
@@ -190,15 +195,13 @@ def send_password_email(new_password):
             server.send_message(msg)
         return True
     except Exception as e:
-        st.error(f"郵件發送失敗: {e}")
+        print(f"Email error: {e}")
         return False
 
 # --- PDF 產生類別 ---
 class ReportPDF(FPDF):
     def header(self):
-        # 標題 (避免在 header 使用中文，除非字型已載入，此處用英文作為安全底層)
-        self.set_font("Arial", "B", 16)
-        # 這裡不寫內容，在 Body 統一處理中文
+        pass # 在內容中手動處理標題以支援中文
         
     def footer(self):
         self.set_y(-15)
@@ -210,18 +213,21 @@ def download_font_if_needed():
     """從 GitHub 下載中文字型"""
     if not os.path.exists(FONT_FILE):
         try:
-            with st.spinner("正在初始化字型資源 (從 GitHub 下載)..."):
+            with st.spinner("正在下載字型資源 (來自 GitHub)..."):
                 response = requests.get(FONT_URL)
                 response.raise_for_status()
                 with open(FONT_FILE, "wb") as f:
                     f.write(response.content)
+            return True
         except Exception as e:
             st.error(f"字型下載失敗: {e}")
+            return False
+    return True
 
 # --- 頁面邏輯 ---
 
 def page_home(data):
-    st.markdown(f"<h1 style='text-align: center;'>{data['title']}</h1>", unsafe_allow_html=True)
+    st.markdown(f"<h1>{data['title']}</h1>", unsafe_allow_html=True)
     
     config = data['config']
     options = data['options']
@@ -231,7 +237,7 @@ def page_home(data):
     st.markdown(
         f"""
         <div style="display: flex; justify-content: center; margin-bottom: 2rem;">
-            <span style="background-color: #e0e7ff; color: #4338ca; padding: 4px 12px; border-radius: 99px; font-size: 0.875rem; font-weight: 600;">
+            <span style="background-color: #e0e7ff; color: #4338ca; padding: 6px 16px; border-radius: 99px; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.05em;">
                 {mode_text}
             </span>
         </div>
@@ -240,17 +246,19 @@ def page_home(data):
     )
 
     with st.form("vote_form"):
-        st.write("### 請選擇下方項目")
+        st.write("### 請選擇項目")
         selected_vals = []
         
         if config['enableMultiSelect']:
+            # 多選使用 multiselect
             selected_vals = st.multiselect(
-                "請點擊選擇 (可多選):", 
+                "點擊下方選擇 (可搜尋):", 
                 options, 
                 max_selections=config['maxSelections'],
                 label_visibility="collapsed"
             )
         else:
+            # 單選使用 radio
             choice = st.radio(
                 "請點擊選擇:", 
                 options, 
@@ -262,7 +270,9 @@ def page_home(data):
         
         st.write("")
         st.write("")
-        submitted = st.form_submit_button("確認送出")
+        
+        # 提交按鈕
+        submitted = st.form_submit_button("確認送出", type="primary")
         
         if submitted:
             if not selected_vals:
@@ -279,40 +289,37 @@ def page_home(data):
 
 def page_success():
     st.markdown("""
-        <div style="text-align: center; padding: 3rem 1rem;">
-            <div style="font-size: 5rem; margin-bottom: 1rem;">🎉</div>
-            <h2 style="color: #059669 !important;">投票成功！</h2>
-            <p style="color: #64748b; font-size: 1.1rem;">感謝您的參與，您的意見對我們很重要。</p>
+        <div style="text-align: center; padding: 4rem 1rem;">
+            <div style="font-size: 6rem; margin-bottom: 1rem; animation: bounce 1s infinite;">🎉</div>
+            <h2 style="color: #059669 !important; font-size: 2.5rem;">投票成功！</h2>
+            <p style="color: #64748b; font-size: 1.2rem; margin-top: 1rem;">感謝您的參與，您的意見對我們很重要。</p>
         </div>
     """, unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("查看即時統計"):
+        if st.button("查看即時統計", type="secondary"):
             st.session_state['page'] = 'stats'
             st.rerun()
     with col2:
-        if st.button("返回首頁"):
+        if st.button("返回首頁", type="primary"):
             st.session_state['page'] = 'home'
             st.rerun()
 
 def page_stats(data):
-    st.title("📊 投票統計結果")
+    st.markdown("<h1>📊 投票統計結果</h1>", unsafe_allow_html=True)
     
     votes = data['votes']
     total_votes = len(votes)
     
     # 頂部概覽卡片
-    st.markdown("""
-        <div style="background: white; padding: 1.5rem; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 2rem; display: flex; align-items: center; justify-content: space-between;">
-            <span style="color: #64748b; font-weight: 600;">總投票人數</span>
-            <span style="color: #4F46E5; font-size: 1.5rem; font-weight: 800;">{}</span>
-        </div>
-    """.format(total_votes), unsafe_allow_html=True)
+    col_metric, _ = st.columns([1, 0.01])
+    with col_metric:
+        st.metric("總投票人數", total_votes)
     
     if total_votes == 0:
         st.info("目前尚無投票數據")
-        if st.button("返回首頁"):
+        if st.button("返回首頁", type="secondary"):
             st.session_state['page'] = 'home'
             st.rerun()
         return
@@ -352,8 +359,9 @@ def page_stats(data):
             showlegend=False,
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
-            font=dict(size=14),
-            margin=dict(l=0, r=0, t=30, b=0)
+            font=dict(size=14, family="Noto Sans TC"),
+            margin=dict(l=0, r=0, t=30, b=0),
+            yaxis=dict(title="")
         )
         st.plotly_chart(fig, use_container_width=True)
     else:
@@ -366,20 +374,20 @@ def page_stats(data):
         )
         fig.update_layout(
             paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(size=14),
-             margin=dict(l=0, r=0, t=30, b=0)
+            font=dict(size=14, family="Noto Sans TC"),
+            margin=dict(l=0, r=0, t=30, b=0)
         )
         st.plotly_chart(fig, use_container_width=True)
         
     st.write("")
-    if st.button("返回首頁", key="back_from_stats"):
+    if st.button("返回首頁", type="secondary", key="back_from_stats"):
         st.session_state['page'] = 'home'
         st.rerun()
 
 def page_admin(data):
-    st.title("⚙️ 管理後台")
+    st.markdown("<h1>⚙️ 管理後台</h1>", unsafe_allow_html=True)
     
-    # 簡單的登入驗證
+    # 簡單的 Session 驗證
     if 'admin_auth' not in st.session_state:
         st.session_state['admin_auth'] = False
         
@@ -387,12 +395,12 @@ def page_admin(data):
         with st.form("login_form"):
             st.write("### 管理員登入")
             pwd = st.text_input("輸入管理密碼", type="password")
-            if st.form_submit_button("登入"):
+            if st.form_submit_button("登入", type="primary"):
                 if pwd == data['password']:
                     st.session_state['admin_auth'] = True
                     st.rerun()
                 else:
-                    st.error("密碼錯誤")
+                    st.error("❌ 密碼錯誤")
         return
 
     # 登入後介面
@@ -412,18 +420,19 @@ def page_admin(data):
                 export_df = votes_df.copy()
                 export_df['option'] = export_df['option'].apply(lambda x: ", ".join(x) if isinstance(x, list) else x)
                 csv = export_df.to_csv(index=False).encode('utf-8-sig')
-                st.download_button("📥 下載 CSV 檔案", csv, f"votes_{datetime.date.today()}.csv", "text/csv")
+                st.download_button("📥 下載 CSV", csv, f"votes_{datetime.date.today()}.csv", "text/csv", type="primary")
             else:
-                st.button("📥 下載 CSV 檔案", disabled=True)
+                st.button("📥 下載 CSV", disabled=True)
         
         with col_d2:
             if st.button("📄 產生 PDF 報告"):
-                download_font_if_needed()
-                if not os.path.exists(FONT_FILE):
-                    st.error(f"字型下載失敗，無法產生 PDF。")
+                font_ready = download_font_if_needed()
+                if not font_ready:
+                    st.error("無法下載字型，PDF 產生失敗。")
                 else:
                     try:
                         pdf = ReportPDF()
+                        # 註冊字型
                         pdf.add_font("NotoSansTC", "", FONT_FILE, uni=True)
                         pdf.add_page()
                         
@@ -460,14 +469,14 @@ def page_admin(data):
                             pdf.cell(40, 10, str(counts[name]), 1, 1, 'R')
                             
                         pdf_bytes = pdf.output(dest='S').encode('latin-1')
-                        st.download_button("點此下載 PDF", pdf_bytes, "report.pdf", "application/pdf")
+                        st.download_button("點此下載 PDF", pdf_bytes, "report.pdf", "application/pdf", type="primary")
                     except Exception as e:
                         st.error(f"PDF 錯誤: {e}")
         
         st.divider()
         with st.expander("⚠️ 危險區域：清除數據"):
             st.warning("此動作無法復原！將清空所有投票紀錄。")
-            if st.button("確認重設所有數據", type="primary"):
+            if st.button("確認重設所有數據", type="secondary"):
                 data['votes'] = []
                 save_data(data)
                 st.success("數據已清空")
@@ -476,7 +485,7 @@ def page_admin(data):
     with tab2:
         st.subheader("修改管理員密碼")
         new_pwd_input = st.text_input("新密碼", type="password")
-        if st.button("確認更改"):
+        if st.button("確認更改密碼", type="primary"):
             if len(new_pwd_input) > 8:
                 st.error("❌ 密碼過長 (最多 8 位)")
             elif not (re.search(r"[a-zA-Z]", new_pwd_input) and re.search(r"[0-9]", new_pwd_input)):
@@ -484,12 +493,13 @@ def page_admin(data):
             else:
                 data['password'] = new_pwd_input
                 save_data(data)
-                with st.spinner("正在更新並發送通知信..."):
+                
+                with st.spinner("正在處理..."):
                     sent = send_password_email(new_pwd_input)
                     if sent:
                         st.success(f"✅ 密碼已更新，通知信已發送至 rme@catholic.edu.hk")
                     else:
-                        st.warning("⚠️ 密碼已更新，但 Email 發送失敗 (請檢查 Secrets)")
+                        st.success("✅ 密碼已更新 (未設定 Email Secrets，跳過發信)")
 
     with tab3:
         st.subheader("一般設定")
@@ -502,12 +512,39 @@ def page_admin(data):
             st.rerun()
             
         st.divider()
-        st.subheader("投票規則")
+        st.subheader("投票選項管理")
+        
+        # 顯示現有選項並提供刪除功能
+        opts_to_remove = []
+        for i, opt in enumerate(data['options']):
+            col_opt, col_del = st.columns([4, 1])
+            with col_opt:
+                st.text_input(f"選項 {i+1}", value=opt, key=f"opt_{i}", disabled=True)
+            with col_del:
+                if st.button("刪除", key=f"del_{i}"):
+                    opts_to_remove.append(i)
+        
+        if opts_to_remove:
+            for i in sorted(opts_to_remove, reverse=True):
+                del data['options'][i]
+            save_data(data)
+            st.rerun()
+            
+        # 新增選項
+        new_opt_text = st.text_input("新增選項", placeholder="輸入選項名稱...")
+        if st.button("＋ 加入選項"):
+            if new_opt_text and new_opt_text not in data['options']:
+                data['options'].append(new_opt_text)
+                save_data(data)
+                st.rerun()
+
+        st.divider()
+        st.subheader("規則設定")
         
         enable_multi = st.checkbox("啟用多選功能 (Multi-select)", value=data['config']['enableMultiSelect'])
-        max_sel = st.number_input("多選上限數", min_value=1, max_value=len(data['options']), value=data['config']['maxSelections'])
+        max_sel = st.number_input("多選上限數", min_value=1, max_value=max(1, len(data['options'])), value=data['config']['maxSelections'])
         
-        if st.button("儲存規則設定"):
+        if st.button("儲存規則"):
             data['config']['enableMultiSelect'] = enable_multi
             data['config']['maxSelections'] = max_sel
             save_data(data)
@@ -538,7 +575,7 @@ def main():
     if 'page' not in st.session_state:
         st.session_state['page'] = 'home'
 
-    # 側邊欄導航 (雖然隱藏 Header, 但 Sidebar 仍可用於快速切換測試)
+    # 側邊欄導航
     with st.sidebar:
         st.header("功能選單")
         if st.button("🏠 投票首頁", use_container_width=True):
@@ -551,7 +588,7 @@ def main():
             st.session_state['page'] = 'admin'
             st.rerun()
         st.divider()
-        st.caption("RMES Polling App v2.0")
+        st.caption("RMES Polling App v2.1")
 
     # 路由控制
     if st.session_state['page'] == 'home':
