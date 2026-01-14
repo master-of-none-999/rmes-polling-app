@@ -13,9 +13,10 @@ import re
 
 # --- 設定與常數 ---
 DATA_FILE = "polling_data.json"
-# 改用 .ttf 字型以解決 FPDF 的 Postscript 錯誤
-FONT_URL = "https://github.com/google/fonts/raw/main/ofl/notosanstc/NotoSansTC-Regular.ttf"
-FONT_FILE = "NotoSansTC-Regular.ttf"
+
+# 【修正】改用台北黑體 (Taipei Sans) 的 TTF 版本，解決 404 和格式錯誤
+FONT_URL = "https://raw.githubusercontent.com/bgp/taipei-sans/master/TaipeiSansTCBeta-Regular.ttf"
+FONT_FILE = "TaipeiSansTCBeta-Regular.ttf"
 
 DEFAULT_DATA = {
     "title": "目標與策略",
@@ -77,7 +78,7 @@ def send_password_email(new_password):
             server.starttls(context=context)
             server.login(email_user, email_password)
             server.send_message(msg)
-        return True
+            return True
     except Exception as e:
         st.error(f"郵件發送失敗: {e}")
         return False
@@ -87,7 +88,7 @@ class ReportPDF(FPDF):
     def header(self):
         # 標題
         if hasattr(self, 'report_title'):
-             # 使用內建字型先顯示英文標題避免亂碼，中文部分依賴 body 設置
+             # 使用標準字型顯示英文標題 (避免無中文字型時亂碼)
              self.set_font("Arial", "B", 16)
              self.cell(0, 10, "Polling Report", 0, 1, 'C')
         self.ln(5)
@@ -102,7 +103,11 @@ def download_font_if_needed():
     """下載中文字型 (.ttf)"""
     if not os.path.exists(FONT_FILE):
         try:
-            with st.spinner("正在下載中文字型 (Noto Sans TC)..."):
+            with st.spinner("正在下載中文字型 (Taipei Sans TC)..."):
+                # 增加 header 避免被 github 擋下
+                opener = urllib.request.build_opener()
+                opener.addheaders = [('User-agent', 'Mozilla/5.0')]
+                urllib.request.install_opener(opener)
                 urllib.request.urlretrieve(FONT_URL, FONT_FILE)
         except Exception as e:
             st.error(f"字型下載失敗: {e}")
@@ -139,7 +144,7 @@ def page_home(data):
             border-color: #4F46E5;
             transform: translateY(-2px);
         }
-        /* 選中狀態 (Streamlit 渲染結構可能變動，此為通用嘗試) */
+        /* 選中狀態通用嘗試 */
         div[role="radiogroup"] > label[data-baseweb="radio"] {
             width: 100%;
         }
@@ -198,14 +203,6 @@ def page_success():
             st.rerun()
 
 def page_stats(data):
-    # 密碼保護檢查 (這裡不需要，因為從 Success 頁面過來通常是公開統計，
-    # 或是依照您的需求，統計頁若需密碼可在這裡加，但目前您的 Prompt 要求 Admin 頁才要密碼)
-    # 若統計頁也要密碼，請取消註解下方：
-    
-    # if 'admin_auth' not in st.session_state or not st.session_state['admin_auth']:
-    #     st.warning("請先登入管理員以查看統計 (若設計為公開則忽略此訊息)")
-    #     # 這裡暫時保持公開，因為 Landing Page -> Success -> Stats 流程通常是流暢的
-
     st.title("投票統計結果")
     
     votes = data['votes']
@@ -213,7 +210,7 @@ def page_stats(data):
     
     col_head_1, col_head_2 = st.columns([2, 1])
     with col_head_1:
-        st.write("") # Spacer
+        st.write("") 
     with col_head_2:
         st.metric("總投票人數", total_votes)
     
@@ -237,9 +234,8 @@ def page_stats(data):
             
     df = pd.DataFrame(list(counts.items()), columns=['選項', '票數'])
     df['百分比'] = (df['票數'] / total_votes * 100).round(1)
-    df = df.sort_values(by='票數', ascending=True) # Bar chart 為了顯示順序通常由下往上
+    df = df.sort_values(by='票數', ascending=True)
 
-    # 底部切換按鈕
     col_chart, col_reset = st.columns([3, 1])
     
     with col_chart:
@@ -247,7 +243,6 @@ def page_stats(data):
     
     with col_reset:
         if st.button("重設", key="reset_btn_public"):
-             # 這裡做一個簡單跳轉提示，實際重設在 Admin
              st.info("請進入管理後台進行重設")
 
     if chart_view == "直條統計圖":
@@ -284,7 +279,6 @@ def page_admin(data):
         
         # CSV 下載
         if not votes_df.empty:
-            # 處理多選轉字串
             export_df = votes_df.copy()
             export_df['option'] = export_df['option'].apply(lambda x: ", ".join(x) if isinstance(x, list) else x)
             csv = export_df.to_csv(index=False).encode('utf-8-sig')
@@ -299,19 +293,20 @@ def page_admin(data):
                 try:
                     pdf = ReportPDF()
                     pdf.report_title = data['title']
-                    pdf.add_font("NotoSansTC", "", FONT_FILE, uni=True)
+                    # 註冊中文字型 (Taipei Sans)
+                    pdf.add_font("TaipeiSans", "", FONT_FILE, uni=True)
                     pdf.add_page()
                     
-                    # 內容
-                    pdf.set_font("NotoSansTC", "", 16)
+                    # 使用中文字型
+                    pdf.set_font("TaipeiSans", "", 16)
                     pdf.cell(0, 10, f"{data['title']} - 統計報告", 0, 1, 'C')
                     pdf.ln(10)
                     
-                    pdf.set_font("NotoSansTC", "", 12)
+                    pdf.set_font("TaipeiSans", "", 12)
                     total = len(data['votes'])
                     pdf.cell(0, 10, f"總投票數: {total}", 0, 1)
                     
-                    # 簡單計算
+                    # 簡單統計
                     all_selected = []
                     for v in data['votes']:
                         opt = v['option']
@@ -336,7 +331,6 @@ def page_admin(data):
                     st.error(f"PDF 產生發生錯誤: {e}")
 
         st.divider()
-        # 重設按鈕
         with st.expander("⚠️ 重設所有數據"):
             st.warning("此動作無法復原！")
             if st.button("確認重設 (刪除所有票數)"):
@@ -349,17 +343,13 @@ def page_admin(data):
         st.subheader("修改管理員密碼")
         new_pwd_input = st.text_input("新密碼", type="password")
         if st.button("確認更改"):
-            # 1. 驗證規則 (最多8位，需英數混合)
             if len(new_pwd_input) > 8:
                 st.error("密碼格式不符：長度不能超過 8 位")
             elif not (re.search(r"[a-zA-Z]", new_pwd_input) and re.search(r"[0-9]", new_pwd_input)):
                 st.error("密碼格式不符：需包含英文與數字")
             else:
-                # 2. 更新資料庫
                 data['password'] = new_pwd_input
                 save_data(data)
-                
-                # 3. 發送電郵
                 with st.spinner("正在發送通知郵件..."):
                     sent = send_password_email(new_pwd_input)
                     if sent:
@@ -389,7 +379,6 @@ def main():
     if 'page' not in st.session_state:
         st.session_state['page'] = 'home'
 
-    # 側邊欄導覽
     with st.sidebar:
         st.title("功能選單")
         if st.button("🏠 投票首頁", use_container_width=True):
@@ -397,12 +386,11 @@ def main():
             st.rerun()
         if st.button("📊 統計結果", use_container_width=True):
             st.session_state['page'] = 'stats'
-            st.rerun() # 允許公開查看統計
+            st.rerun()
         if st.button("⚙️ 管理員登入", use_container_width=True):
             st.session_state['page'] = 'admin'
             st.rerun()
             
-    # 路由
     if st.session_state['page'] == 'home':
         page_home(data)
     elif st.session_state['page'] == 'success':
