@@ -5,7 +5,6 @@ import json
 import os
 import datetime
 from fpdf import FPDF
-import urllib.request
 import smtplib
 import ssl
 from email.message import EmailMessage
@@ -14,9 +13,8 @@ import re
 # --- 設定與常數 ---
 DATA_FILE = "polling_data.json"
 
-# 【修正】改用台北黑體 (Taipei Sans) 的 TTF 版本，解決 404 和格式錯誤
-FONT_URL = "https://raw.githubusercontent.com/bgp/taipei-sans/master/TaipeiSansTCBeta-Regular.ttf"
-FONT_FILE = "TaipeiSansTCBeta-Regular.ttf"
+# 【關鍵修改】這裡的檔名改為您剛剛上傳的那個檔案
+FONT_FILE = "NotoSansTC-VariableFont_wght.ttf"
 
 DEFAULT_DATA = {
     "title": "目標與策略",
@@ -56,10 +54,15 @@ def save_data(data):
 def send_password_email(new_password):
     """發送密碼更新通知郵件"""
     try:
+        # 檢查 secrets 是否存在
+        if "gmail" not in st.secrets:
+            st.error("尚未設定 Secrets! 請至 Streamlit Cloud 設定 [gmail] 資訊。")
+            return False
+            
         email_user = st.secrets["gmail"]["user"]
         email_password = st.secrets["gmail"]["password"]
     except Exception:
-        st.error("Secrets 設定錯誤：無法讀取 [gmail] 設定，請檢查 Streamlit Cloud 後台。")
+        st.error("Secrets 讀取錯誤")
         return False
 
     receiver_email = "rme@catholic.edu.hk"
@@ -86,9 +89,7 @@ def send_password_email(new_password):
 # --- PDF 產生類別 ---
 class ReportPDF(FPDF):
     def header(self):
-        # 標題
         if hasattr(self, 'report_title'):
-             # 使用標準字型顯示英文標題 (避免無中文字型時亂碼)
              self.set_font("Arial", "B", 16)
              self.cell(0, 10, "Polling Report", 0, 1, 'C')
         self.ln(5)
@@ -99,23 +100,9 @@ class ReportPDF(FPDF):
         self.set_text_color(128)
         self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
 
-def download_font_if_needed():
-    """下載中文字型 (.ttf)"""
-    if not os.path.exists(FONT_FILE):
-        try:
-            with st.spinner("正在下載中文字型 (Taipei Sans TC)..."):
-                # 增加 header 避免被 github 擋下
-                opener = urllib.request.build_opener()
-                opener.addheaders = [('User-agent', 'Mozilla/5.0')]
-                urllib.request.install_opener(opener)
-                urllib.request.urlretrieve(FONT_URL, FONT_FILE)
-        except Exception as e:
-            st.error(f"字型下載失敗: {e}")
-
 # --- 頁面邏輯 ---
 
 def page_home(data):
-    # CSS 美化：將 Radio Button 變成卡片樣式
     st.markdown("""
     <style>
         div[role="radiogroup"] > label > div:first-of-type {
@@ -144,7 +131,6 @@ def page_home(data):
             border-color: #4F46E5;
             transform: translateY(-2px);
         }
-        /* 選中狀態通用嘗試 */
         div[role="radiogroup"] > label[data-baseweb="radio"] {
             width: 100%;
         }
@@ -286,27 +272,27 @@ def page_admin(data):
         
         # PDF 下載
         if st.button("產生 PDF 統計報告"):
-            download_font_if_needed()
             if not os.path.exists(FONT_FILE):
-                st.error(f"無法找到字型檔 {FONT_FILE}，請稍後再試。")
+                st.error(f"❌ 找不到字型檔: {FONT_FILE}。請確認您已將 .ttf 檔案上傳至 GitHub！")
             else:
                 try:
                     pdf = ReportPDF()
                     pdf.report_title = data['title']
-                    # 註冊中文字型 (Taipei Sans)
-                    pdf.add_font("TaipeiSans", "", FONT_FILE, uni=True)
+                    
+                    # 註冊中文字型
+                    pdf.add_font("NotoSansTC", "", FONT_FILE, uni=True)
                     pdf.add_page()
                     
                     # 使用中文字型
-                    pdf.set_font("TaipeiSans", "", 16)
+                    pdf.set_font("NotoSansTC", "", 16)
                     pdf.cell(0, 10, f"{data['title']} - 統計報告", 0, 1, 'C')
                     pdf.ln(10)
                     
-                    pdf.set_font("TaipeiSans", "", 12)
+                    pdf.set_font("NotoSansTC", "", 12)
                     total = len(data['votes'])
                     pdf.cell(0, 10, f"總投票數: {total}", 0, 1)
                     
-                    # 簡單統計
+                    # 統計
                     all_selected = []
                     for v in data['votes']:
                         opt = v['option']
@@ -328,7 +314,9 @@ def page_admin(data):
                     pdf_bytes = pdf.output(dest='S').encode('latin-1')
                     st.download_button("下載 PDF", pdf_bytes, "report.pdf", "application/pdf")
                 except Exception as e:
-                    st.error(f"PDF 產生發生錯誤: {e}")
+                    # 捕捉 Variable Font 可能造成的錯誤
+                    st.error(f"PDF 產生錯誤: {e}")
+                    st.info("提示：如果出現 'cmap' 相關錯誤，請改為上傳 Static 資料夾中的 'NotoSansTC-Regular.ttf'。")
 
         st.divider()
         with st.expander("⚠️ 重設所有數據"):
