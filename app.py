@@ -6,11 +6,16 @@ import os
 import datetime
 from fpdf import FPDF
 import urllib.request
+import smtplib
+import ssl
+from email.message import EmailMessage
+import re
 
 # --- 設定與常數 ---
 DATA_FILE = "polling_data.json"
-FONT_URL = "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/TraditionalChinese/NotoSansCJKtc-Regular.otf"
-FONT_FILE = "NotoSansCJKtc-Regular.otf"
+# 改用 .ttf 字型以解決 FPDF 的 Postscript 錯誤
+FONT_URL = "https://github.com/google/fonts/raw/main/ofl/notosanstc/NotoSansTC-Regular.ttf"
+FONT_FILE = "NotoSansTC-Regular.ttf"
 
 DEFAULT_DATA = {
     "title": "目標與策略",
@@ -47,58 +52,114 @@ def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-# --- PDF 產生類別 (支援中文與自訂頁尾) ---
+def send_password_email(new_password):
+    """發送密碼更新通知郵件"""
+    try:
+        email_user = st.secrets["gmail"]["user"]
+        email_password = st.secrets["gmail"]["password"]
+    except Exception:
+        st.error("Secrets 設定錯誤：無法讀取 [gmail] 設定，請檢查 Streamlit Cloud 後台。")
+        return False
+
+    receiver_email = "rme@catholic.edu.hk"
+    subject = "統計App密碼更新"
+    body = f"您的管理員密碼已更新為: {new_password}"
+
+    msg = EmailMessage()
+    msg.set_content(body)
+    msg['Subject'] = subject
+    msg['From'] = email_user
+    msg['To'] = receiver_email
+
+    try:
+        context = ssl.create_default_context()
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls(context=context)
+            server.login(email_user, email_password)
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        st.error(f"郵件發送失敗: {e}")
+        return False
+
+# --- PDF 產生類別 ---
 class ReportPDF(FPDF):
     def header(self):
-        self.set_font("CustomFont", "", 16)
         # 標題
         if hasattr(self, 'report_title'):
-             self.cell(0, 10, f"{self.report_title} - 投票統計報告", 0, 1, 'L')
-        self.set_font("CustomFont", "", 10)
-        self.set_text_color(100, 116, 139) # Slate-500
-        self.cell(0, 10, f"產生時間: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", 0, 1, 'L')
+             # 使用內建字型先顯示英文標題避免亂碼，中文部分依賴 body 設置
+             self.set_font("Arial", "B", 16)
+             self.cell(0, 10, "Polling Report", 0, 1, 'C')
         self.ln(5)
 
     def footer(self):
         self.set_y(-15)
-        self.set_font("CustomFont", "", 8)
-        self.set_text_color(148, 163, 184) # Slate-400
-        # 這裡就是您要求的頁尾修改
-        self.cell(0, 10, 'RMES Polling App Report', 0, 0, 'C')
+        self.set_font("Arial", "I", 8)
+        self.set_text_color(128)
+        self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
 
 def download_font_if_needed():
-    """下載中文字型以支援 PDF 輸出"""
+    """下載中文字型 (.ttf)"""
     if not os.path.exists(FONT_FILE):
         try:
-            with st.spinner("正在下載中文字型以支援 PDF 報告..."):
-                # 使用較小的替代字型以加快下載速度 (Google Noto Sans TC)
-                # 這裡為了示範穩定性，若無法下載請手動放入 .ttf/.otf
-                urllib.request.urlretrieve("https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/TraditionalChinese/NotoSansCJKtc-Regular.otf", FONT_FILE)
+            with st.spinner("正在下載中文字型 (Noto Sans TC)..."):
+                urllib.request.urlretrieve(FONT_URL, FONT_FILE)
         except Exception as e:
-            st.error(f"字型下載失敗，PDF 中文可能無法顯示。錯誤: {e}")
+            st.error(f"字型下載失敗: {e}")
 
 # --- 頁面邏輯 ---
 
 def page_home(data):
+    # CSS 美化：將 Radio Button 變成卡片樣式
+    st.markdown("""
+    <style>
+        div[role="radiogroup"] > label > div:first-of-type {
+            display: none;
+        }
+        div[role="radiogroup"] {
+            flex-direction: column;
+            gap: 15px;
+        }
+        div[role="radiogroup"] > label {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 12px;
+            border: 2px solid #e9ecef;
+            transition: all 0.3s;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+            color: #495057;
+            display: flex;
+            justify-content: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        div[role="radiogroup"] > label:hover {
+            background-color: #e9ecef;
+            border-color: #4F46E5;
+            transform: translateY(-2px);
+        }
+        /* 選中狀態 (Streamlit 渲染結構可能變動，此為通用嘗試) */
+        div[role="radiogroup"] > label[data-baseweb="radio"] {
+            width: 100%;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
     st.markdown(f"<h1 style='text-align: center; color: #4F46E5;'>{data['title']}</h1>", unsafe_allow_html=True)
     
     config = data['config']
     options = data['options']
     
     st.write("")
-    
-    # 顯示選擇模式提示
     mode_text = f"可選 {config['maxSelections']} 項" if config['enableMultiSelect'] else "單選"
     st.markdown(f"<div style='text-align: center; color: #64748B; margin-bottom: 20px;'>請選擇下方項目 ({mode_text})</div>", unsafe_allow_html=True)
 
     with st.form("vote_form"):
         selected_vals = []
-        
         if config['enableMultiSelect']:
-            # 多選模式
             selected_vals = st.multiselect("請選擇:", options, max_selections=config['maxSelections'])
         else:
-            # 單選模式
             choice = st.radio("請選擇:", options, index=None)
             if choice:
                 selected_vals = [choice]
@@ -109,13 +170,10 @@ def page_home(data):
             if not selected_vals:
                 st.warning("請至少選擇一個選項")
             else:
-                # 儲存投票
                 new_vote = {
                     "option": selected_vals if config['enableMultiSelect'] else selected_vals[0],
                     "timestamp": datetime.datetime.now().isoformat()
                 }
-                # 如果是多選，資料庫儲存結構可能需要攤平，這裡為了簡單，我們在讀取時處理
-                # 為了配合 React 版邏輯，這裡直接存入
                 data['votes'].append(new_vote)
                 save_data(data)
                 st.session_state['page'] = 'success'
@@ -124,14 +182,14 @@ def page_home(data):
 def page_success():
     st.markdown("""
     <div style="text-align: center; padding: 40px;">
-        <h2 style="color: #10B981;">✅ 投票成功！</h2>
-        <p style="color: #64748B;">感謝您的參與，您的意見對我們很重要。</p>
+        <h2 style="color: #10B981;">✅ 已成功投選！</h2>
+        <p style="color: #64748B;">感謝您的參與。</p>
     </div>
     """, unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("查看即時統計", use_container_width=True):
+        if st.button("統計圖", use_container_width=True):
             st.session_state['page'] = 'stats'
             st.rerun()
     with col2:
@@ -140,12 +198,24 @@ def page_success():
             st.rerun()
 
 def page_stats(data):
-    st.title("統計結果")
+    # 密碼保護檢查 (這裡不需要，因為從 Success 頁面過來通常是公開統計，
+    # 或是依照您的需求，統計頁若需密碼可在這裡加，但目前您的 Prompt 要求 Admin 頁才要密碼)
+    # 若統計頁也要密碼，請取消註解下方：
+    
+    # if 'admin_auth' not in st.session_state or not st.session_state['admin_auth']:
+    #     st.warning("請先登入管理員以查看統計 (若設計為公開則忽略此訊息)")
+    #     # 這裡暫時保持公開，因為 Landing Page -> Success -> Stats 流程通常是流暢的
+
+    st.title("投票統計結果")
     
     votes = data['votes']
     total_votes = len(votes)
     
-    st.metric("總投票數", total_votes)
+    col_head_1, col_head_2 = st.columns([2, 1])
+    with col_head_1:
+        st.write("") # Spacer
+    with col_head_2:
+        st.metric("總投票人數", total_votes)
     
     if total_votes == 0:
         st.info("目前尚無投票數據")
@@ -160,7 +230,6 @@ def page_stats(data):
         else:
             all_selected.append(opt)
             
-    # 確保所有選項都有計數（即使是0）
     counts = {opt: 0 for opt in data['options']}
     for opt in all_selected:
         if opt in counts:
@@ -168,28 +237,29 @@ def page_stats(data):
             
     df = pd.DataFrame(list(counts.items()), columns=['選項', '票數'])
     df['百分比'] = (df['票數'] / total_votes * 100).round(1)
-    df = df.sort_values(by='票數', ascending=False)
+    df = df.sort_values(by='票數', ascending=True) # Bar chart 為了顯示順序通常由下往上
 
-    # 圖表切換
-    chart_type = st.radio("圖表類型", ["直條圖", "圓形圖"], horizontal=True)
+    # 底部切換按鈕
+    col_chart, col_reset = st.columns([3, 1])
     
-    if chart_type == "直條圖":
+    with col_chart:
+        chart_view = st.radio("圖表切換", ["直條統計圖", "圓形統計圖"], horizontal=True, label_visibility="collapsed")
+    
+    with col_reset:
+        if st.button("重設", key="reset_btn_public"):
+             # 這裡做一個簡單跳轉提示，實際重設在 Admin
+             st.info("請進入管理後台進行重設")
+
+    if chart_view == "直條統計圖":
         fig = px.bar(df, x='票數', y='選項', orientation='h', text='票數', color='選項')
-        fig.update_layout(showlegend=False, yaxis={'categoryorder':'total ascending'})
+        fig.update_layout(showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
     else:
-        fig = px.pie(df, values='票數', names='選項', hole=0.4)
+        fig = px.pie(df, values='票數', names='選項', hole=0.3)
         st.plotly_chart(fig, use_container_width=True)
 
-    # 詳細表格
-    st.dataframe(
-        df.style.format({'百分比': '{:.1f}%'}), 
-        use_container_width=True,
-        hide_index=True
-    )
-
 def page_admin(data):
-    st.title("內容管理")
+    st.title("管理後台")
     
     if 'admin_auth' not in st.session_state:
         st.session_state['admin_auth'] = False
@@ -204,157 +274,135 @@ def page_admin(data):
                 st.error("密碼錯誤")
         return
 
-    # --- 管理員介面 ---
-    
-    with st.expander("📝 基本設定", expanded=True):
-        new_title = st.text_input("投票標題", data['title'])
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            enable_multi = st.checkbox("啟用多選功能", data['config']['enableMultiSelect'])
-        with col2:
-            max_sel = st.number_input("多選數目限制", min_value=1, max_value=len(data['options']), value=data['config']['maxSelections'], disabled=not enable_multi)
-            
-        st.subheader("選項管理")
-        current_options = data['options']
-        options_text = st.text_area("編輯選項 (每行一個)", "\n".join(current_options), height=200)
-        
-        if st.button("儲存基本設定"):
-            data['title'] = new_title
-            data['config']['enableMultiSelect'] = enable_multi
-            data['config']['maxSelections'] = max_sel
-            # 過濾空白行
-            new_opts = [line.strip() for line in options_text.split('\n') if line.strip()]
-            data['options'] = new_opts
-            save_data(data)
-            st.success("設定已更新！")
-            st.rerun()
+    # --- 登入後介面 ---
+    tab1, tab2, tab3 = st.tabs(["統計與數據", "更改密碼", "系統設定"])
 
-    with st.expander("🔐 帳號安全"):
-        new_pwd = st.text_input("新密碼")
-        if st.button("更改密碼"):
-            if len(new_pwd) > 0:
-                data['password'] = new_pwd
-                save_data(data)
-                st.success(f"密碼已更改為: {new_pwd}")
-            else:
-                st.error("密碼不能為空")
-
-    with st.expander("📊 數據匯出", expanded=True):
-        # CSV Export
+    with tab1:
+        st.subheader("數據概覽")
         votes_df = pd.DataFrame(data['votes'])
-        # 處理多選資料轉字串以便 CSV 顯示
+        st.dataframe(votes_df, use_container_width=True)
+        
+        # CSV 下載
         if not votes_df.empty:
-            votes_df['option'] = votes_df['option'].apply(lambda x: ", ".join(x) if isinstance(x, list) else x)
-            csv = votes_df.to_csv(index=False).encode('utf-8-sig') # BOM for Excel
-            st.download_button(
-                "下載 CSV 原始數據",
-                csv,
-                f"votes_export_{datetime.date.today()}.csv",
-                "text/csv",
-                key='download-csv'
-            )
-        else:
-            st.info("尚無數據可匯出 CSV")
-
-        # PDF Export
+            # 處理多選轉字串
+            export_df = votes_df.copy()
+            export_df['option'] = export_df['option'].apply(lambda x: ", ".join(x) if isinstance(x, list) else x)
+            csv = export_df.to_csv(index=False).encode('utf-8-sig')
+            st.download_button("下載 CSV", csv, f"votes_{datetime.date.today()}.csv", "text/csv")
+        
+        # PDF 下載
         if st.button("產生 PDF 統計報告"):
             download_font_if_needed()
             if not os.path.exists(FONT_FILE):
-                st.error("找不到中文字型檔，無法產生 PDF。")
+                st.error(f"無法找到字型檔 {FONT_FILE}，請稍後再試。")
             else:
-                pdf = ReportPDF()
-                pdf.report_title = data['title']
-                pdf.add_font("CustomFont", "", FONT_FILE, uni=True)
-                pdf.add_page()
-                
-                # 統計數據計算
-                total = len(data['votes'])
-                all_selected = []
-                for v in data['votes']:
-                    opt = v['option']
-                    if isinstance(opt, list):
-                        all_selected.extend(opt)
-                    else:
-                        all_selected.append(opt)
-                counts = {opt: 0 for opt in data['options']}
-                for opt in all_selected:
-                    if opt in counts:
-                        counts[opt] += 1
-                
-                # 概覽
-                pdf.set_font("CustomFont", "", 12)
-                pdf.cell(0, 10, f"總投票數: {total}", 0, 1)
-                pdf.ln(5)
-                
-                # 表格 Header
-                pdf.set_fill_color(241, 245, 249) # Slate-100
-                pdf.cell(100, 10, "選項名稱", 1, 0, 'L', 1)
-                pdf.cell(40, 10, "得票數", 1, 0, 'R', 1)
-                pdf.cell(40, 10, "百分比", 1, 1, 'R', 1)
-                
-                # 表格內容
-                pdf.set_font("CustomFont", "", 11)
-                for name in data['options']:
-                    val = counts.get(name, 0)
-                    pct = f"{(val/total*100):.1f}%" if total > 0 else "0.0%"
-                    pdf.cell(100, 10, name, 1, 0, 'L')
-                    pdf.cell(40, 10, str(val), 1, 0, 'R')
-                    pdf.cell(40, 10, pct, 1, 1, 'R')
-                
-                # 輸出 PDF
-                pdf_bytes = pdf.output(dest='S').encode('latin-1')
-                st.download_button(
-                    label="下載 PDF 報告",
-                    data=pdf_bytes,
-                    file_name=f"report_{datetime.date.today()}.pdf",
-                    mime="application/pdf"
-                )
+                try:
+                    pdf = ReportPDF()
+                    pdf.report_title = data['title']
+                    pdf.add_font("NotoSansTC", "", FONT_FILE, uni=True)
+                    pdf.add_page()
+                    
+                    # 內容
+                    pdf.set_font("NotoSansTC", "", 16)
+                    pdf.cell(0, 10, f"{data['title']} - 統計報告", 0, 1, 'C')
+                    pdf.ln(10)
+                    
+                    pdf.set_font("NotoSansTC", "", 12)
+                    total = len(data['votes'])
+                    pdf.cell(0, 10, f"總投票數: {total}", 0, 1)
+                    
+                    # 簡單計算
+                    all_selected = []
+                    for v in data['votes']:
+                        opt = v['option']
+                        if isinstance(opt, list): all_selected.extend(opt)
+                        else: all_selected.append(opt)
+                    counts = {opt: 0 for opt in data['options']}
+                    for opt in all_selected:
+                        if opt in counts: counts[opt] += 1
+                        
+                    pdf.ln(5)
+                    pdf.set_fill_color(240, 240, 240)
+                    pdf.cell(100, 10, "選項", 1, 0, 'L', 1)
+                    pdf.cell(30, 10, "票數", 1, 1, 'R', 1)
+                    
+                    for name in data['options']:
+                        pdf.cell(100, 10, name, 1, 0, 'L')
+                        pdf.cell(30, 10, str(counts[name]), 1, 1, 'R')
+                        
+                    pdf_bytes = pdf.output(dest='S').encode('latin-1')
+                    st.download_button("下載 PDF", pdf_bytes, "report.pdf", "application/pdf")
+                except Exception as e:
+                    st.error(f"PDF 產生發生錯誤: {e}")
 
-    with st.expander("⚠️ 危險區域"):
-        if st.button("重設所有數據 (清空投票)", type="primary"):
-            data['votes'] = []
+        st.divider()
+        # 重設按鈕
+        with st.expander("⚠️ 重設所有數據"):
+            st.warning("此動作無法復原！")
+            if st.button("確認重設 (刪除所有票數)"):
+                data['votes'] = []
+                save_data(data)
+                st.success("數據已清空")
+                st.rerun()
+
+    with tab2:
+        st.subheader("修改管理員密碼")
+        new_pwd_input = st.text_input("新密碼", type="password")
+        if st.button("確認更改"):
+            # 1. 驗證規則 (最多8位，需英數混合)
+            if len(new_pwd_input) > 8:
+                st.error("密碼格式不符：長度不能超過 8 位")
+            elif not (re.search(r"[a-zA-Z]", new_pwd_input) and re.search(r"[0-9]", new_pwd_input)):
+                st.error("密碼格式不符：需包含英文與數字")
+            else:
+                # 2. 更新資料庫
+                data['password'] = new_pwd_input
+                save_data(data)
+                
+                # 3. 發送電郵
+                with st.spinner("正在發送通知郵件..."):
+                    sent = send_password_email(new_pwd_input)
+                    if sent:
+                        st.success("密碼已更新並發送至電郵 rme@catholic.edu.hk")
+                    else:
+                        st.warning("密碼已更新，但電郵發送失敗 (請檢查 Secrets 設定)")
+
+    with tab3:
+        st.subheader("選項與標題設定")
+        new_title = st.text_input("APP 標題", data['title'])
+        if st.button("更新標題"):
+            data['title'] = new_title
             save_data(data)
-            st.warning("所有投票數據已清空")
-            st.rerun()
-            
+            st.success("標題已更新")
+
+    st.write("")
     if st.button("登出"):
         st.session_state['admin_auth'] = False
         st.rerun()
 
 # --- 主程式 ---
 def main():
-    st.set_page_config(page_title="RMES Polling App", page_icon="📊", layout="centered")
+    st.set_page_config(page_title="RMES Polling", page_icon="🗳️", layout="centered")
     
-    # CSS 優化
-    st.markdown("""
-        <style>
-        .stButton>button {
-            border-radius: 10px;
-            font-weight: bold;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
     data = load_data()
     
     if 'page' not in st.session_state:
         st.session_state['page'] = 'home'
 
-    # Sidebar Navigation
+    # 側邊欄導覽
     with st.sidebar:
-        st.markdown("### 導覽")
-        if st.button("首頁", use_container_width=True):
+        st.title("功能選單")
+        if st.button("🏠 投票首頁", use_container_width=True):
             st.session_state['page'] = 'home'
             st.rerun()
-        if st.button("即時統計", use_container_width=True):
+        if st.button("📊 統計結果", use_container_width=True):
             st.session_state['page'] = 'stats'
-            st.rerun()
-        if st.button("管理後台", use_container_width=True):
+            st.rerun() # 允許公開查看統計
+        if st.button("⚙️ 管理員登入", use_container_width=True):
             st.session_state['page'] = 'admin'
             st.rerun()
-
-    # Page Routing
+            
+    # 路由
     if st.session_state['page'] == 'home':
         page_home(data)
     elif st.session_state['page'] == 'success':
